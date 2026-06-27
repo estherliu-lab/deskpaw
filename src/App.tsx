@@ -77,7 +77,7 @@ function Header({
     <header className="sticky top-0 z-30 border-b border-black/5 bg-paper/86 backdrop-blur">
       <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <button className="brand-lockup" onClick={() => go("home")} aria-label="DeskPaw home">
-          <span className="brand-icon">DP</span>
+          <img className="brand-icon brand-icon-image" src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="" />
           <span>
             <strong>{language === "zh" ? "DeskPaw 桌面爪爪" : "DeskPaw"}</strong>
             <small>{language === "zh" ? "桌角陪伴工具" : "Desk companion"}</small>

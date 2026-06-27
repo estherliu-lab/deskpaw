@@ -50,6 +50,10 @@ Open it on your phone, then use Safari or Chrome to add DeskPaw to your home scr
 - 功能示例卡片
 - 美观扫码安装区
 
+未来 skill 仓库介绍页的中英切换规范记录在：
+
+`docs/skill-repo-page-guideline.md`
+
 ## Local Development
 
 ```bash

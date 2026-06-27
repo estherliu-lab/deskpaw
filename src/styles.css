@@ -60,6 +60,11 @@ a:hover {
   font-weight: 800;
 }
 
+.brand-icon-image {
+  display: block;
+  object-fit: cover;
+}
+
 .brand-lockup strong,
 .brand-lockup small {
   display: block;

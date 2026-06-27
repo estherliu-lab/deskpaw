@@ -54,52 +54,45 @@
       }
 
       .nav-inner {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 14px 0;
+        display: block;
+        padding: 14px 0 12px;
       }
 
       .brand {
         display: inline-flex;
         align-items: center;
         gap: 10px;
+        color: #0f172a;
+        font-size: clamp(26px, 4vw, 34px);
         font-weight: 900;
       }
 
-      .brand-mark {
-        display: grid;
-        width: 42px;
-        height: 42px;
-        place-items: center;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #f1ae83, #7eb0a4);
-        color: #fffdf8;
+      .brand-separator {
+        color: rgba(15, 23, 42, 0.52);
+        font-weight: 400;
       }
 
-      .toggle {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        min-width: 176px;
-        border: 1px solid rgba(40, 48, 52, 0.12);
-        border-radius: 13px;
-        background: #fffdf8;
-        padding: 4px;
+      .language-links {
+        margin-top: 14px;
+        border-top: 1px solid rgba(15, 23, 42, 0.12);
+        padding-top: 16px;
+        color: #2563eb;
+        font-size: 16px;
       }
 
-      .toggle button {
+      .language-links button {
         border: 0;
-        border-radius: 9px;
         background: transparent;
-        padding: 8px 10px;
-        color: rgba(40, 48, 52, 0.66);
+        color: #2563eb;
         cursor: pointer;
+        padding: 0;
+        text-decoration: underline;
       }
 
-      .toggle button.active {
-        background: #283034;
-        color: #fffdf8;
+      .language-links button.active {
+        color: #0f172a;
+        font-weight: 700;
+        text-decoration: none;
       }
 
       .hero {
@@ -310,10 +303,6 @@
           grid-template-columns: 1fr;
         }
 
-        .nav-inner {
-          align-items: flex-start;
-          flex-direction: column;
-        }
       }
     </style>
   </head>
@@ -321,13 +310,15 @@
     <div class="shell">
       <header class="nav">
         <div class="nav-inner">
-          <a class="brand" href="../">
-            <span class="brand-mark">DP</span>
+          <a class="brand" href="../" aria-label="DeskPaw home">
             <span>DeskPaw</span>
+            <span class="brand-separator">|</span>
+            <span>桌面爪爪</span>
           </a>
-          <div class="toggle" aria-label="Language">
-            <button type="button" class="active" data-set-lang="zh">中文</button>
+          <div class="language-links" aria-label="Language">
             <button type="button" data-set-lang="en">English</button>
+            <span>|</span>
+            <button type="button" class="active" data-set-lang="zh">中文</button>
           </div>
         </div>
       </header>
