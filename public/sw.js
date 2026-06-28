@@ -6,8 +6,7 @@ const CORE_ASSETS = [
   `${BASE_PATH}/manifest.json`,
   OFFLINE_URL,
   `${BASE_PATH}/demo/sample-pet.png`,
-  `${BASE_PATH}/demo/desk-texture.png`,
-  `${BASE_PATH}/showcase/`
+  `${BASE_PATH}/demo/desk-texture.png`
 ];
 
 self.addEventListener("install", (event) => {
