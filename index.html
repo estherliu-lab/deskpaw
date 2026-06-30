@@ -18,7 +18,8 @@
     <script type="module" src="/src/main.tsx"></script>
     <script>
       const isLocal = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-      if (!isLocal) {
+      const hasBuiltEntry = document.querySelector('script[src="/deskpaw/app-assets/index.js"]');
+      if (!isLocal && !hasBuiltEntry) {
         const appScript = document.createElement("script");
         appScript.type = "module";
         appScript.src = "/deskpaw/app-assets/index.js";
