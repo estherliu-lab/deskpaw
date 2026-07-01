@@ -4,6 +4,7 @@ import type { GeneratedPet, Language, PetAction, PetStyle } from "../types/pet";
 
 interface PetVisualProps {
   image?: string;
+  imageMode?: "photo" | "avatar";
   name?: string;
   styleId?: PetStyle;
   actionId?: PetAction;
@@ -12,23 +13,26 @@ interface PetVisualProps {
   compact?: boolean;
 }
 
-export function PetVisual({ image, name, styleId, actionId, language, message, compact }: PetVisualProps) {
+export function PetVisual({ image, imageMode = "photo", name, styleId, actionId, language, message, compact }: PetVisualProps) {
   const style = petStyles.find((item) => item.id === styleId) ?? petStyles[0];
   const action = petActions.find((item) => item.id === actionId) ?? petActions[0];
   const title = name || (language === "zh" ? "示例爪爪" : "Sample Paw");
   const bubble = message || (language === "zh" ? "今天别太累，我陪你。" : "I will stay with you today.");
+  const imageClass = image ? (imageMode === "avatar" ? "pet-character-avatar" : "pet-character-photo") : "pet-character-demo";
   return (
     <div className={`pet-stage ${style.className} ${compact ? "pet-stage-compact" : ""}`}>
       <div className="pet-bubble">{bubble}</div>
       <div className="pet-orbit">
         <div
-          className={`pet-character pet-style-${style.id} ${action.animationClass} ${image ? "pet-character-photo" : "pet-character-demo"}`}
+          className={`pet-character pet-style-${style.id} ${action.animationClass} ${imageClass}`}
           data-pet-style={style.id}
           data-pet-action={action.id}
-          key={`${style.id}-${action.id}-${image ? "photo" : "demo"}`}
+          key={`${style.id}-${action.id}-${image ? imageMode : "demo"}`}
         >
           <div className={`pet-image-wrap ${image ? "pet-image-photo" : "pet-image-demo"}`}>
-            {image ? (
+            {image && imageMode === "avatar" ? (
+              <img src={image} alt={title} className="pet-image pet-avatar-sprite" />
+            ) : image ? (
               <div className="pet-photo-puppet" aria-label={title}>
                 <img src={image} alt={title} className="pet-image pet-image-base pet-photo-part pet-photo-body" />
                 <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-tail" aria-hidden="true" />
@@ -64,9 +68,11 @@ export function PetVisual({ image, name, styleId, actionId, language, message, c
 }
 
 export function GeneratedPetVisual({ profile, language, compact }: { profile: GeneratedPet; language: Language; compact?: boolean }) {
+  const hasGeneratedAvatar = Boolean(profile.imageAvatar && profile.imageAvatar !== profile.imageOriginal);
   return (
     <PetVisual
       image={profile.imageAvatar || profile.imageOriginal}
+      imageMode={hasGeneratedAvatar ? "avatar" : "photo"}
       name={profile.name}
       styleId={profile.selectedStyle}
       actionId={profile.selectedActions[0]}

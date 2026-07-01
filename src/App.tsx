@@ -315,6 +315,7 @@ function UploadPage({
         <SectionTitle title={t.sections.upload} body={t.upload.helper} />
         <PetVisual
           image={previewImage || image}
+          imageMode={previewImage ? "avatar" : "photo"}
           name={name}
           styleId={styleId}
           actionId={selectedAction}

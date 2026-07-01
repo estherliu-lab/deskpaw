@@ -3,6 +3,26 @@ import type { StyledPetRequest, StyledPetResult } from "../types/desktop";
 
 const size = 768;
 
+interface Palette {
+  base: string;
+  light: string;
+  dark: string;
+  blush: string;
+}
+
+interface Pose {
+  bodyY: number;
+  headX: number;
+  headY: number;
+  headRotate: number;
+  bodyScaleX: number;
+  bodyScaleY: number;
+  pawLift: number;
+  tailRotate: number;
+  eyeScaleY: number;
+  mouth: "smile" | "sleep" | "pout" | "grumpy";
+}
+
 export function hasDesktopAiGenerator() {
   return Boolean(window.deskpawDesktop?.generateStyledPet);
 }
@@ -26,9 +46,10 @@ export async function renderLocalStyledPet(
   imageDataUrl: string,
   styleId: PetStyle,
   petType: PetType,
-  actionId?: PetAction
+  actionId: PetAction = "idle-standing"
 ): Promise<string> {
   const image = await loadImage(imageDataUrl);
+  const palette = samplePalette(image);
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -36,8 +57,8 @@ export async function renderLocalStyledPet(
   if (!ctx) return imageDataUrl;
 
   ctx.clearRect(0, 0, size, size);
-  drawSubjectBase(ctx, image, styleId, petType, actionId);
-  applyStyleFinish(ctx, styleId);
+  drawStylizedMascot(ctx, palette, styleId, petType, actionId);
+  applyFinish(ctx, styleId, palette);
   return canvas.toDataURL("image/png");
 }
 
@@ -50,139 +71,355 @@ function loadImage(src: string) {
   });
 }
 
-function drawSubjectBase(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  styleId: PetStyle,
-  petType: PetType,
-  actionId?: PetAction
-) {
-  const subject = subjectShape(petType, actionId);
+function samplePalette(image: HTMLImageElement): Palette {
+  const canvas = document.createElement("canvas");
+  canvas.width = 80;
+  canvas.height = 80;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return fallbackPalette();
+  ctx.drawImage(image, 0, 0, 80, 80);
+  const data = ctx.getImageData(0, 0, 80, 80).data;
+  const samples: Array<[number, number, number, number]> = [];
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max - min;
+    const brightness = (r + g + b) / 3;
+    if (brightness > 235 || brightness < 22 || saturation < 7) continue;
+    samples.push([r, g, b, brightness]);
+  }
+
+  if (samples.length < 40) return fallbackPalette();
+  samples.sort((a, b) => a[3] - b[3]);
+  const middle = average(samples.slice(Math.floor(samples.length * 0.28), Math.floor(samples.length * 0.68)));
+  const light = average(samples.slice(Math.floor(samples.length * 0.68), Math.floor(samples.length * 0.9)));
+  const dark = average(samples.slice(Math.floor(samples.length * 0.06), Math.floor(samples.length * 0.24)));
+
+  return {
+    base: rgb(middle),
+    light: rgb(mix(light, [255, 244, 224], 0.28)),
+    dark: rgb(mix(dark, [44, 34, 28], 0.3)),
+    blush: "rgba(235, 136, 132, 0.46)"
+  };
+}
+
+function fallbackPalette(): Palette {
+  return {
+    base: "#d9a76c",
+    light: "#fff0d2",
+    dark: "#4a3325",
+    blush: "rgba(235, 136, 132, 0.46)"
+  };
+}
+
+function drawStylizedMascot(ctx: CanvasRenderingContext2D, palette: Palette, styleId: PetStyle, petType: PetType, actionId: PetAction) {
+  const pose = poseFor(actionId);
+  const line = styleId === "minimal-line" ? "#283034" : palette.dark;
+  const strokeWidth = styleId === "pixel-game" ? 10 : styleId === "minimal-line" ? 9 : 7;
 
   ctx.save();
-  ctx.translate(size / 2, size / 2 + subject.offsetY);
-  ctx.rotate(subject.rotate);
-  ctx.scale(subject.scaleX, subject.scaleY);
-  drawShapePath(ctx, subject.kind);
-  ctx.clip();
-  coverImage(ctx, image, -size / 2, -size / 2, size, size);
+  ctx.translate(size / 2, size / 2 + 40 + pose.bodyY);
+  if (actionId === "happy-jumping" || actionId === "celebration") ctx.translate(0, -38);
+  ctx.scale(pose.bodyScaleX, pose.bodyScaleY);
+
+  drawShadow(ctx, styleId);
+  drawTail(ctx, palette, line, strokeWidth, petType, pose, styleId);
+  drawBody(ctx, palette, line, strokeWidth, styleId);
+  drawPaws(ctx, palette, line, strokeWidth, pose, styleId);
+  drawHead(ctx, palette, line, strokeWidth, petType, pose, styleId);
+  drawFace(ctx, palette, pose, styleId);
+  drawStyleProps(ctx, styleId, palette);
+
   ctx.restore();
+}
 
+function poseFor(actionId: PetAction): Pose {
+  const poses: Partial<Record<PetAction, Partial<Pose>>> = {
+    sitting: { bodyY: 24, bodyScaleY: 0.92, headY: 8 },
+    "lying-rest": { bodyY: 58, bodyScaleX: 1.22, bodyScaleY: 0.72, headX: 52, headY: 38, headRotate: -0.12 },
+    sleeping: { bodyY: 58, bodyScaleX: 1.18, bodyScaleY: 0.7, headX: 48, headY: 42, headRotate: -0.14, eyeScaleY: 0.08, mouth: "sleep" },
+    "happy-jumping": { bodyY: -18, bodyScaleY: 1.05, pawLift: 38, tailRotate: 0.45 },
+    affection: { tailRotate: 0.65, headRotate: -0.08 },
+    blinking: { eyeScaleY: 0.08 },
+    "head-tilt": { headRotate: 0.24, headX: 20, headY: -6 },
+    grumpy: { headRotate: -0.06, mouth: "grumpy" },
+    pouty: { bodyY: 18, eyeScaleY: 0.82, mouth: "pout" },
+    stretching: { bodyScaleX: 1.2, bodyScaleY: 0.86, headX: 66, headY: 28, pawLift: -12 },
+    "water-reminder": { pawLift: 58, headRotate: -0.05 },
+    waving: { pawLift: 72, headRotate: 0.08 },
+    celebration: { bodyY: -28, pawLift: 84, tailRotate: 0.6 },
+    "focus-mode": { bodyY: 0, eyeScaleY: 0.72 }
+  };
+  return {
+    bodyY: 0,
+    headX: 0,
+    headY: 0,
+    headRotate: 0,
+    bodyScaleX: 1,
+    bodyScaleY: 1,
+    pawLift: 0,
+    tailRotate: 0.2,
+    eyeScaleY: 1,
+    mouth: "smile",
+    ...poses[actionId]
+  };
+}
+
+function drawShadow(ctx: CanvasRenderingContext2D, styleId: PetStyle) {
   ctx.save();
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.translate(size / 2, size / 2 + subject.offsetY);
-  ctx.rotate(subject.rotate);
-  ctx.scale(subject.scaleX, subject.scaleY);
-  drawShapePath(ctx, subject.kind);
+  ctx.globalAlpha = styleId === "night-companion" ? 0.18 : 0.14;
+  ctx.fillStyle = "#283034";
+  ctx.beginPath();
+  ctx.ellipse(0, 226, 220, 48, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
 
-  if (styleId !== "minimal-line") {
+function drawBody(ctx: CanvasRenderingContext2D, palette: Palette, line: string, strokeWidth: number, styleId: PetStyle) {
+  const fill = bodyFill(ctx, palette, styleId, -210, -40, 420, 330);
+  ctx.save();
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth;
+  ctx.beginPath();
+  ctx.ellipse(0, 86, 178, 164, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  drawPatch(ctx, -52, 52, 68, 88, palette.light, 0.82);
+  ctx.restore();
+}
+
+function drawHead(
+  ctx: CanvasRenderingContext2D,
+  palette: Palette,
+  line: string,
+  strokeWidth: number,
+  petType: PetType,
+  pose: Pose,
+  styleId: PetStyle
+) {
+  ctx.save();
+  ctx.translate(pose.headX, -110 + pose.headY);
+  ctx.rotate(pose.headRotate);
+
+  const floppy = petType === "dog";
+  ctx.fillStyle = bodyFill(ctx, palette, styleId, -180, -190, 360, 260);
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth;
+
+  if (floppy) {
+    drawEar(ctx, -138, -28, -0.46, palette.base, line, strokeWidth, styleId);
+    drawEar(ctx, 138, -28, 0.46, palette.base, line, strokeWidth, styleId);
+  } else {
+    drawTriangleEar(ctx, -92, -116, -0.22, palette.base, line, strokeWidth);
+    drawTriangleEar(ctx, 92, -116, 0.22, palette.base, line, strokeWidth);
+  }
+
+  ctx.beginPath();
+  ctx.ellipse(0, -18, 152, 130, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  drawPatch(ctx, -38, 18, 92, 62, palette.light, 0.88);
+  ctx.restore();
+}
+
+function drawEar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  rotate: number,
+  fill: string,
+  line: string,
+  strokeWidth: number,
+  styleId: PetStyle
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotate);
+  ctx.fillStyle = styleId === "wool-felt" ? fill : fill;
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 48, 98, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTriangleEar(ctx: CanvasRenderingContext2D, x: number, y: number, rotate: number, fill: string, line: string, strokeWidth: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotate);
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth;
+  ctx.beginPath();
+  ctx.moveTo(0, -74);
+  ctx.lineTo(-56, 44);
+  ctx.lineTo(56, 44);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTail(
+  ctx: CanvasRenderingContext2D,
+  palette: Palette,
+  line: string,
+  strokeWidth: number,
+  petType: PetType,
+  pose: Pose,
+  styleId: PetStyle
+) {
+  if (petType === "bird") return;
+  ctx.save();
+  ctx.translate(154, 66);
+  ctx.rotate(-0.55 + pose.tailRotate);
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth + 18;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(76, -86, 126, -10);
+  ctx.stroke();
+  ctx.strokeStyle = styleId === "wool-felt" ? palette.light : palette.base;
+  ctx.lineWidth = strokeWidth + 8;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPaws(ctx: CanvasRenderingContext2D, palette: Palette, line: string, strokeWidth: number, pose: Pose, styleId: PetStyle) {
+  const pawFill = styleId === "minimal-line" ? "#fffdf8" : palette.light;
+  drawPaw(ctx, -88, 196 - pose.pawLift * 0.2, -0.08, pawFill, line, strokeWidth);
+  drawPaw(ctx, 88, 196 - pose.pawLift, 0.16, pawFill, line, strokeWidth);
+}
+
+function drawPaw(ctx: CanvasRenderingContext2D, x: number, y: number, rotate: number, fill: string, line: string, strokeWidth: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotate);
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = line;
+  ctx.lineWidth = strokeWidth;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 54, 42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFace(ctx: CanvasRenderingContext2D, palette: Palette, pose: Pose, styleId: PetStyle) {
+  ctx.save();
+  ctx.translate(pose.headX, -110 + pose.headY);
+  ctx.rotate(pose.headRotate);
+  const eye = styleId === "minimal-line" ? "#283034" : "#1f1c18";
+  ctx.fillStyle = eye;
+  drawEye(ctx, -54, -34, pose.eyeScaleY);
+  drawEye(ctx, 54, -34, pose.eyeScaleY);
+
+  ctx.fillStyle = styleId === "wool-felt" ? "#3c2a21" : "#231f1b";
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 22, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#3a2a23";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  if (pose.mouth === "sleep") {
+    ctx.arc(0, 44, 36, 0.15, Math.PI - 0.15);
+  } else if (pose.mouth === "pout") {
+    ctx.moveTo(-20, 52);
+    ctx.quadraticCurveTo(0, 40, 20, 52);
+  } else if (pose.mouth === "grumpy") {
+    ctx.moveTo(-26, 52);
+    ctx.lineTo(26, 42);
+  } else {
+    ctx.moveTo(0, 24);
+    ctx.quadraticCurveTo(-24, 58, -54, 44);
+    ctx.moveTo(0, 24);
+    ctx.quadraticCurveTo(24, 58, 54, 44);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = palette.blush;
+  ctx.beginPath();
+  ctx.ellipse(-92, 24, 28, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(92, 24, 28, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEye(ctx: CanvasRenderingContext2D, x: number, y: number, scaleY: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, Math.max(0.08, scaleY));
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 22, 26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (scaleY > 0.2) {
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.beginPath();
+    ctx.arc(-7, -8, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPatch(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, fill: string, alpha: number) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.ellipse(x, y, width, height, -0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStyleProps(ctx: CanvasRenderingContext2D, styleId: PetStyle, palette: Palette) {
+  if (styleId === "retro-desktop") {
     ctx.save();
-    ctx.globalCompositeOperation = "destination-over";
-    ctx.fillStyle = "rgba(255, 253, 248, 0.01)";
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#fffdf8";
+    ctx.strokeStyle = palette.dark;
+    ctx.lineWidth = 6;
+    roundedRect(ctx, -120, 230, 240, 34, 8);
+    ctx.fill();
+    ctx.stroke();
     ctx.restore();
   }
 }
 
-function subjectShape(petType: PetType, actionId?: PetAction) {
-  const longBody = petType === "dog" || petType === "cat";
-  const resting = actionId === "lying-rest" || actionId === "sleeping";
-  return {
-    kind: resting ? "rest" : longBody ? "pet" : "round",
-    offsetY: resting ? 44 : 12,
-    rotate: actionId === "head-tilt" ? -0.06 : actionId === "grumpy" ? 0.04 : 0,
-    scaleX: resting ? 1.08 : 1,
-    scaleY: actionId === "sitting" ? 0.94 : resting ? 0.82 : 1
-  };
-}
-
-function drawShapePath(ctx: CanvasRenderingContext2D, kind: string) {
-  ctx.beginPath();
-  if (kind === "rest") {
-    ctx.ellipse(0, 54, 300, 178, -0.08, 0, Math.PI * 2);
-    ctx.ellipse(64, -104, 178, 148, 0.08, 0, Math.PI * 2);
-    ctx.rect(-290, -20, 580, 260);
-    return;
+function bodyFill(ctx: CanvasRenderingContext2D, palette: Palette, styleId: PetStyle, x: number, y: number, width: number, height: number) {
+  if (styleId === "minimal-line") return "#fffdf8";
+  if (styleId === "night-companion" || styleId === "dreamy-stardust") {
+    const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
+    gradient.addColorStop(0, "#66709a");
+    gradient.addColorStop(1, palette.base);
+    return gradient;
   }
-
-  if (kind === "round") {
-    ctx.ellipse(0, 0, 276, 302, 0, 0, Math.PI * 2);
-    return;
+  if (styleId === "soft-3d-toy") {
+    const gradient = ctx.createRadialGradient(x + width * 0.3, y + height * 0.22, 20, x + width * 0.5, y + height * 0.5, width * 0.66);
+    gradient.addColorStop(0, palette.light);
+    gradient.addColorStop(1, palette.base);
+    return gradient;
   }
-
-  ctx.ellipse(0, 62, 260, 224, 0, 0, Math.PI * 2);
-  ctx.ellipse(22, -136, 202, 168, 0, 0, Math.PI * 2);
-  ctx.ellipse(-174, -168, 70, 118, -0.28, 0, Math.PI * 2);
-  ctx.ellipse(190, -164, 70, 118, 0.28, 0, Math.PI * 2);
+  return palette.base;
 }
 
-function coverImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const scale = Math.max(width / image.width, height / image.height);
-  const drawWidth = image.width * scale;
-  const drawHeight = image.height * scale;
-  ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
-}
-
-function applyStyleFinish(ctx: CanvasRenderingContext2D, styleId: PetStyle) {
-  const original = ctx.getImageData(0, 0, size, size);
-  const data = original.data;
-
-  if (styleId === "pixel-game") pixelate(ctx, 16);
-  if (styleId === "minimal-line") lineArt(ctx, original);
-
-  tunePixels(data, styleId);
-  ctx.putImageData(original, 0, 0);
-
-  if (styleId === "wool-felt") drawWoolFibers(ctx, original);
+function applyFinish(ctx: CanvasRenderingContext2D, styleId: PetStyle, palette: Palette) {
+  if (styleId === "pixel-game") pixelate(ctx, 18);
+  if (styleId === "minimal-line") applyLineArt(ctx);
+  if (styleId === "wool-felt") drawWoolFibers(ctx, palette);
   if (styleId === "watercolor" || styleId === "japanese-journal" || styleId === "fairy-tale") drawPaperWash(ctx, styleId);
   if (styleId === "cartoon-sticker" || styleId === "social-cute") drawStickerOutline(ctx);
   if (styleId === "soft-3d-toy") drawToyHighlights(ctx);
   if (styleId === "dreamy-stardust" || styleId === "night-companion") drawSparkles(ctx);
-}
-
-function tunePixels(data: Uint8ClampedArray, styleId: PetStyle) {
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 8) continue;
-    let r = data[i];
-    let g = data[i + 1];
-    let b = data[i + 2];
-    const gray = (r + g + b) / 3;
-
-    if (styleId === "wool-felt") {
-      r = r * 1.08 + 12;
-      g = g * 1.02 + 8;
-      b = b * 0.92;
-    } else if (styleId === "watercolor") {
-      r = r * 1.06 + 10;
-      g = g * 1.05 + 8;
-      b = b * 1.08 + 12;
-      data[i + 3] *= 0.92;
-    } else if (styleId === "pixel-game" || styleId === "meme-expressive") {
-      r = r * 1.18;
-      g = g * 1.12;
-      b = b * 1.08;
-    } else if (styleId === "minimal-line") {
-      r = g = b = gray > 150 ? 248 : 40;
-    } else if (styleId === "night-companion" || styleId === "dreamy-stardust") {
-      r = r * 0.78 + 34;
-      g = g * 0.76 + 38;
-      b = b * 1.12 + 44;
-    } else if (styleId === "forest-nature") {
-      r *= 0.92;
-      g = g * 1.08 + 8;
-      b *= 0.9;
-    } else {
-      r = r * 1.04 + 6;
-      g = g * 1.02 + 4;
-      b = b * 1.01 + 4;
-    }
-
-    data[i] = clamp(r);
-    data[i + 1] = clamp(g);
-    data[i + 2] = clamp(b);
-  }
+  if (styleId === "forest-nature") drawLeaves(ctx, palette);
 }
 
 function pixelate(ctx: CanvasRenderingContext2D, blockSize: number) {
@@ -199,34 +436,42 @@ function pixelate(ctx: CanvasRenderingContext2D, blockSize: number) {
   ctx.imageSmoothingEnabled = true;
 }
 
-function lineArt(ctx: CanvasRenderingContext2D, imageData: ImageData) {
-  const data = imageData.data;
+function applyLineArt(ctx: CanvasRenderingContext2D) {
+  const image = ctx.getImageData(0, 0, size, size);
+  const data = image.data;
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 8) continue;
+    if (data[i + 3] < 20) continue;
     const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    const ink = gray < 118 ? 34 : gray < 178 ? 110 : 248;
+    const ink = gray < 170 ? 42 : 255;
     data[i] = data[i + 1] = data[i + 2] = ink;
   }
+  ctx.putImageData(image, 0, 0);
 }
 
-function drawWoolFibers(ctx: CanvasRenderingContext2D, imageData: ImageData) {
-  const data = imageData.data;
+function drawWoolFibers(ctx: CanvasRenderingContext2D, palette: Palette) {
   ctx.save();
-  ctx.globalAlpha = 0.42;
+  ctx.globalCompositeOperation = "source-atop";
   ctx.lineCap = "round";
-  for (let i = 0; i < 3800; i++) {
+  for (let i = 0; i < 5200; i++) {
     const x = seeded(i * 17) * size;
     const y = seeded(i * 31 + 7) * size;
-    const index = (Math.floor(y) * size + Math.floor(x)) * 4;
-    if (data[index + 3] < 30) continue;
     const angle = seeded(i * 43) * Math.PI * 2;
-    const len = 5 + seeded(i * 59) * 15;
-    ctx.strokeStyle = `rgba(${data[index]}, ${data[index + 1]}, ${data[index + 2]}, 0.55)`;
-    ctx.lineWidth = 1 + seeded(i * 71) * 2.4;
+    const len = 7 + seeded(i * 59) * 22;
+    ctx.strokeStyle = i % 3 === 0 ? "rgba(255,253,248,0.46)" : i % 3 === 1 ? "rgba(90,64,45,0.22)" : toAlpha(palette.base, 0.32);
+    ctx.lineWidth = 1.2 + seeded(i * 71) * 3.4;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
     ctx.stroke();
+  }
+
+  for (let i = 0; i < 800; i++) {
+    const x = seeded(i * 101) * size;
+    const y = seeded(i * 131) * size;
+    ctx.fillStyle = i % 2 ? "rgba(255,253,248,0.34)" : "rgba(70,48,34,0.16)";
+    ctx.beginPath();
+    ctx.arc(x, y, 1 + seeded(i * 41) * 2.8, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -234,12 +479,12 @@ function drawWoolFibers(ctx: CanvasRenderingContext2D, imageData: ImageData) {
 function drawPaperWash(ctx: CanvasRenderingContext2D, styleId: PetStyle) {
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
-  ctx.globalAlpha = styleId === "watercolor" ? 0.28 : 0.18;
-  for (let i = 0; i < 80; i++) {
+  ctx.globalAlpha = styleId === "watercolor" ? 0.38 : 0.24;
+  for (let i = 0; i < 110; i++) {
     const x = seeded(i * 9) * size;
     const y = seeded(i * 13) * size;
-    const radius = 28 + seeded(i * 19) * 90;
-    ctx.fillStyle = i % 2 ? "rgba(255,253,248,0.7)" : "rgba(91,145,150,0.16)";
+    const radius = 26 + seeded(i * 19) * 96;
+    ctx.fillStyle = i % 2 ? "rgba(255,253,248,0.72)" : "rgba(91,145,150,0.16)";
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -250,8 +495,8 @@ function drawPaperWash(ctx: CanvasRenderingContext2D, styleId: PetStyle) {
 function drawStickerOutline(ctx: CanvasRenderingContext2D) {
   ctx.save();
   ctx.globalCompositeOperation = "destination-over";
-  for (let offset = 22; offset >= 8; offset -= 7) {
-    ctx.shadowColor = offset > 10 ? "rgba(255,255,255,0.95)" : "rgba(40,48,52,0.75)";
+  for (let offset = 28; offset >= 10; offset -= 6) {
+    ctx.shadowColor = offset > 16 ? "rgba(255,255,255,0.98)" : "rgba(40,48,52,0.72)";
     ctx.shadowBlur = offset;
     ctx.drawImage(ctx.canvas, 0, 0);
   }
@@ -259,8 +504,8 @@ function drawStickerOutline(ctx: CanvasRenderingContext2D) {
 }
 
 function drawToyHighlights(ctx: CanvasRenderingContext2D) {
-  const gradient = ctx.createRadialGradient(250, 180, 20, 250, 180, 360);
-  gradient.addColorStop(0, "rgba(255,255,255,0.45)");
+  const gradient = ctx.createRadialGradient(245, 170, 20, 245, 170, 380);
+  gradient.addColorStop(0, "rgba(255,255,255,0.55)");
   gradient.addColorStop(1, "rgba(255,255,255,0)");
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
@@ -272,11 +517,11 @@ function drawToyHighlights(ctx: CanvasRenderingContext2D) {
 function drawSparkles(ctx: CanvasRenderingContext2D) {
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
-  ctx.fillStyle = "rgba(255,253,248,0.82)";
-  for (let i = 0; i < 28; i++) {
+  ctx.fillStyle = "rgba(255,253,248,0.86)";
+  for (let i = 0; i < 34; i++) {
     const x = seeded(i * 23) * size;
     const y = seeded(i * 29) * size;
-    const r = 1.5 + seeded(i * 31) * 3.5;
+    const r = 1.5 + seeded(i * 31) * 4.5;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -284,12 +529,61 @@ function drawSparkles(ctx: CanvasRenderingContext2D) {
   ctx.restore();
 }
 
-function clamp(value: number) {
-  return Math.max(0, Math.min(255, value));
+function drawLeaves(ctx: CanvasRenderingContext2D, palette: Palette) {
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.fillStyle = toAlpha(palette.dark, 0.18);
+  for (let i = 0; i < 42; i++) {
+    const x = seeded(i * 37) * size;
+    const y = seeded(i * 47) * size;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(seeded(i * 53) * Math.PI);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 8, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+}
+
+function average(samples: Array<[number, number, number, number]>) {
+  const total = samples.reduce(
+    (sum, item) => [sum[0] + item[0], sum[1] + item[1], sum[2] + item[2]],
+    [0, 0, 0]
+  );
+  return total.map((value) => Math.round(value / Math.max(1, samples.length))) as [number, number, number];
+}
+
+function mix(a: [number, number, number], b: [number, number, number], amount: number): [number, number, number] {
+  return [
+    Math.round(a[0] * (1 - amount) + b[0] * amount),
+    Math.round(a[1] * (1 - amount) + b[1] * amount),
+    Math.round(a[2] * (1 - amount) + b[2] * amount)
+  ];
+}
+
+function rgb(color: [number, number, number]) {
+  return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+}
+
+function toAlpha(color: string, alpha: number) {
+  const match = color.match(/\d+/g);
+  if (!match) return `rgba(217, 167, 108, ${alpha})`;
+  return `rgba(${match[0]}, ${match[1]}, ${match[2]}, ${alpha})`;
 }
 
 function seeded(value: number) {
   const x = Math.sin(value * 999) * 10000;
   return x - Math.floor(x);
 }
-
