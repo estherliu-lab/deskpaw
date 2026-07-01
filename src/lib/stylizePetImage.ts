@@ -10,6 +10,19 @@ interface Palette {
   blush: string;
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface SourceSubject {
+  image: HTMLImageElement;
+  mask: HTMLCanvasElement;
+  crop: Rect;
+}
+
 interface Pose {
   bodyY: number;
   headX: number;
@@ -57,7 +70,8 @@ export async function renderLocalStyledPet(
   if (!ctx) return imageDataUrl;
 
   ctx.clearRect(0, 0, size, size);
-  drawStylizedMascot(ctx, palette, styleId, petType, actionId);
+  const subject = extractSourceSubject(image);
+  drawPhotoBasedPet(ctx, subject, palette, styleId, petType, actionId);
   applyFinish(ctx, styleId, palette);
   return canvas.toDataURL("image/png");
 }
@@ -69,6 +83,443 @@ function loadImage(src: string) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function extractSourceSubject(image: HTMLImageElement): SourceSubject {
+  const probeSize = 220;
+  const probe = document.createElement("canvas");
+  probe.width = probeSize;
+  probe.height = probeSize;
+  const probeCtx = probe.getContext("2d", { willReadFrequently: true });
+  if (!probeCtx) {
+    return {
+      image,
+      mask: createFullMask(image.width, image.height),
+      crop: fullImageCrop(image)
+    };
+  }
+
+  const fit = containRect(image.width, image.height, probeSize, probeSize);
+  probeCtx.clearRect(0, 0, probeSize, probeSize);
+  probeCtx.drawImage(image, fit.x, fit.y, fit.width, fit.height);
+  const data = probeCtx.getImageData(0, 0, probeSize, probeSize);
+  const corners = [
+    sampleAverage(data, 0, 0, 30, 30, probeSize),
+    sampleAverage(data, probeSize - 30, 0, 30, 30, probeSize),
+    sampleAverage(data, 0, probeSize - 30, 30, 30, probeSize),
+    sampleAverage(data, probeSize - 30, probeSize - 30, 30, 30, probeSize)
+  ];
+  const bg = averageRgb(corners);
+  const alpha = new Uint8ClampedArray(probeSize * probeSize);
+  let minX = probeSize;
+  let minY = probeSize;
+  let maxX = 0;
+  let maxY = 0;
+  let hits = 0;
+
+  for (let y = 0; y < probeSize; y++) {
+    for (let x = 0; x < probeSize; x++) {
+      const i = (y * probeSize + x) * 4;
+      const r = data.data[i];
+      const g = data.data[i + 1];
+      const b = data.data[i + 2];
+      const a = data.data[i + 3];
+      const brightness = (r + g + b) / 3;
+      const contrast = colorDistance([r, g, b], bg);
+      const centerBias = 1 - Math.min(1, Math.hypot(x - probeSize / 2, y - probeSize / 2) / (probeSize * 0.72));
+      const keep = a > 24 && (contrast > 34 || centerBias > 0.42) && brightness < 248;
+      if (!keep) continue;
+      alpha[y * probeSize + x] = Math.round(155 + centerBias * 100);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      hits++;
+    }
+  }
+
+  const usableMask = hits > probeSize * probeSize * 0.05 && maxX > minX && maxY > minY;
+  if (!usableMask) {
+    return {
+      image,
+      mask: createFullMask(image.width, image.height),
+      crop: fullImageCrop(image)
+    };
+  }
+
+  const mask = document.createElement("canvas");
+  mask.width = probeSize;
+  mask.height = probeSize;
+  const maskCtx = mask.getContext("2d", { willReadFrequently: true });
+  if (!maskCtx) {
+    return {
+      image,
+      mask: createFullMask(image.width, image.height),
+      crop: fullImageCrop(image)
+    };
+  }
+  const maskImage = maskCtx.createImageData(probeSize, probeSize);
+  for (let i = 0; i < alpha.length; i++) {
+    const edgeSoftness = alpha[i];
+    maskImage.data[i * 4] = 255;
+    maskImage.data[i * 4 + 1] = 255;
+    maskImage.data[i * 4 + 2] = 255;
+    maskImage.data[i * 4 + 3] = edgeSoftness;
+  }
+  maskCtx.putImageData(maskImage, 0, 0);
+  featherMask(maskCtx, mask, 7);
+
+  const pad = 20;
+  const cropProbe = {
+    x: Math.max(fit.x, minX - pad),
+    y: Math.max(fit.y, minY - pad),
+    width: Math.min(fit.x + fit.width, maxX + pad) - Math.max(fit.x, minX - pad),
+    height: Math.min(fit.y + fit.height, maxY + pad) - Math.max(fit.y, minY - pad)
+  };
+  const scaleX = image.width / fit.width;
+  const scaleY = image.height / fit.height;
+  const crop = {
+    x: Math.max(0, (cropProbe.x - fit.x) * scaleX),
+    y: Math.max(0, (cropProbe.y - fit.y) * scaleY),
+    width: Math.min(image.width, cropProbe.width * scaleX),
+    height: Math.min(image.height, cropProbe.height * scaleY)
+  };
+
+  const croppedMask = document.createElement("canvas");
+  croppedMask.width = Math.max(1, Math.round(cropProbe.width));
+  croppedMask.height = Math.max(1, Math.round(cropProbe.height));
+  const croppedMaskCtx = croppedMask.getContext("2d");
+  if (!croppedMaskCtx) return { image, mask, crop };
+  croppedMaskCtx.drawImage(
+    mask,
+    cropProbe.x,
+    cropProbe.y,
+    cropProbe.width,
+    cropProbe.height,
+    0,
+    0,
+    croppedMask.width,
+    croppedMask.height
+  );
+
+  return { image, mask: croppedMask, crop };
+}
+
+function drawPhotoBasedPet(
+  ctx: CanvasRenderingContext2D,
+  subject: SourceSubject,
+  palette: Palette,
+  styleId: PetStyle,
+  petType: PetType,
+  actionId: PetAction
+) {
+  const pose = poseFor(actionId);
+  const stage = document.createElement("canvas");
+  stage.width = size;
+  stage.height = size;
+  const stageCtx = stage.getContext("2d", { willReadFrequently: true });
+  if (!stageCtx) {
+    drawStylizedMascot(ctx, palette, styleId, petType, actionId);
+    return;
+  }
+
+  const target = fitSubjectTarget(subject.crop, pose, actionId);
+  stageCtx.save();
+  stageCtx.translate(target.x + target.width / 2, target.y + target.height / 2);
+  stageCtx.rotate(pose.headRotate * 0.35);
+  stageCtx.scale(pose.bodyScaleX, pose.bodyScaleY);
+  stageCtx.translate(-(target.x + target.width / 2), -(target.y + target.height / 2));
+  stageCtx.drawImage(
+    subject.image,
+    subject.crop.x,
+    subject.crop.y,
+    subject.crop.width,
+    subject.crop.height,
+    target.x,
+    target.y,
+    target.width,
+    target.height
+  );
+  stageCtx.globalCompositeOperation = "destination-in";
+  stageCtx.drawImage(subject.mask, target.x, target.y, target.width, target.height);
+  stageCtx.restore();
+  stageCtx.globalCompositeOperation = "source-over";
+
+  transformSubjectPixels(stageCtx, styleId, palette);
+  drawSubjectSilhouette(ctx, stage, styleId, palette);
+  ctx.drawImage(stage, 0, 0);
+  drawPhotoStyleAccents(ctx, target, palette, styleId, petType, actionId);
+}
+
+function fitSubjectTarget(crop: Rect, pose: Pose, actionId: PetAction): Rect {
+  const maxWidth = actionId === "lying-rest" || actionId === "sleeping" ? 620 : 570;
+  const maxHeight = actionId === "lying-rest" || actionId === "sleeping" ? 430 : 590;
+  const scale = Math.min(maxWidth / crop.width, maxHeight / crop.height);
+  const width = crop.width * scale;
+  const height = crop.height * scale;
+  const x = (size - width) / 2 + pose.headX * 0.16;
+  const y = (size - height) / 2 + 24 + pose.bodyY - (actionId === "happy-jumping" || actionId === "celebration" ? 44 : 0);
+  return { x, y, width, height };
+}
+
+function transformSubjectPixels(ctx: CanvasRenderingContext2D, styleId: PetStyle, palette: Palette) {
+  const image = ctx.getImageData(0, 0, size, size);
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 8) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const gray = (r + g + b) / 3;
+    const warm = parseColor(palette.light);
+    const base = parseColor(palette.base);
+    const dark = parseColor(palette.dark);
+
+    if (styleId === "wool-felt") {
+      const felt = gray > 172 ? warm : gray < 82 ? dark : base;
+      data[i] = Math.round(r * 0.34 + felt[0] * 0.66);
+      data[i + 1] = Math.round(g * 0.34 + felt[1] * 0.66);
+      data[i + 2] = Math.round(b * 0.34 + felt[2] * 0.66);
+      data[i + 3] = Math.min(255, data[i + 3] + 18);
+    } else if (styleId === "watercolor" || styleId === "japanese-journal" || styleId === "fairy-tale") {
+      data[i] = Math.round(r * 0.74 + warm[0] * 0.26);
+      data[i + 1] = Math.round(g * 0.74 + warm[1] * 0.26);
+      data[i + 2] = Math.round(b * 0.74 + warm[2] * 0.26);
+      data[i + 3] = Math.round(data[i + 3] * 0.88);
+    } else if (styleId === "minimal-line") {
+      const ink = gray < 150 ? 38 : 255;
+      data[i] = data[i + 1] = data[i + 2] = ink;
+    } else if (styleId === "pixel-game") {
+      data[i] = quantize(r, 48);
+      data[i + 1] = quantize(g, 48);
+      data[i + 2] = quantize(b, 48);
+    } else if (styleId === "night-companion" || styleId === "dreamy-stardust") {
+      data[i] = Math.round(r * 0.58 + 72);
+      data[i + 1] = Math.round(g * 0.54 + 72);
+      data[i + 2] = Math.round(b * 0.72 + 96);
+    } else if (styleId === "soft-3d-toy") {
+      data[i] = Math.min(255, Math.round(r * 1.08 + 18));
+      data[i + 1] = Math.min(255, Math.round(g * 1.08 + 18));
+      data[i + 2] = Math.min(255, Math.round(b * 1.08 + 18));
+    } else if (styleId === "cartoon-sticker" || styleId === "social-cute") {
+      data[i] = Math.min(255, quantize(r, 28) + 8);
+      data[i + 1] = Math.min(255, quantize(g, 28) + 8);
+      data[i + 2] = Math.min(255, quantize(b, 28) + 8);
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  if (styleId === "pixel-game") pixelate(ctx, 18);
+  if (styleId === "wool-felt") softenSubject(ctx, 0.45);
+}
+
+function drawSubjectSilhouette(ctx: CanvasRenderingContext2D, stage: HTMLCanvasElement, styleId: PetStyle, palette: Palette) {
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.shadowColor =
+    styleId === "cartoon-sticker" || styleId === "social-cute"
+      ? "rgba(255,253,248,0.98)"
+      : styleId === "minimal-line"
+        ? "rgba(40,48,52,0.8)"
+        : "rgba(40,48,52,0.22)";
+  ctx.shadowBlur = styleId === "cartoon-sticker" || styleId === "social-cute" ? 26 : 18;
+  ctx.drawImage(stage, 0, 0);
+  ctx.shadowBlur = styleId === "cartoon-sticker" || styleId === "social-cute" ? 10 : 4;
+  ctx.shadowColor = styleId === "minimal-line" ? "#283034" : toAlpha(palette.dark, 0.42);
+  ctx.drawImage(stage, 0, 0);
+  ctx.restore();
+}
+
+function drawPhotoStyleAccents(
+  ctx: CanvasRenderingContext2D,
+  target: Rect,
+  palette: Palette,
+  styleId: PetStyle,
+  petType: PetType,
+  actionId: PetAction
+) {
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  if (styleId === "wool-felt") {
+    ctx.lineCap = "round";
+    for (let i = 0; i < 2600; i++) {
+      const x = target.x + seeded(i * 19) * target.width;
+      const y = target.y + seeded(i * 23) * target.height;
+      const angle = seeded(i * 31) * Math.PI * 2;
+      const len = 5 + seeded(i * 41) * 18;
+      ctx.strokeStyle = i % 2 ? "rgba(255,253,248,0.44)" : toAlpha(palette.dark, 0.2);
+      ctx.lineWidth = 1.1 + seeded(i * 47) * 2.8;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+      ctx.stroke();
+    }
+  }
+
+  if (styleId === "watercolor" || styleId === "japanese-journal") {
+    ctx.globalAlpha = 0.28;
+    for (let i = 0; i < 26; i++) {
+      ctx.fillStyle = i % 2 ? "rgba(255,253,248,0.72)" : "rgba(73,127,131,0.2)";
+      ctx.beginPath();
+      ctx.ellipse(
+        target.x + seeded(i * 7) * target.width,
+        target.y + seeded(i * 11) * target.height,
+        24 + seeded(i * 13) * 60,
+        14 + seeded(i * 17) * 42,
+        seeded(i * 19) * Math.PI,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.save();
+  if (actionId === "affection" || styleId === "social-cute") {
+    ctx.fillStyle = "rgba(233,120,99,0.78)";
+    drawHeart(ctx, target.x + target.width * 0.76, target.y + target.height * 0.16, 22);
+  }
+  if (actionId === "water-reminder") {
+    ctx.fillStyle = "rgba(73,127,131,0.78)";
+    drawDrop(ctx, target.x + target.width * 0.72, target.y + target.height * 0.2, 26);
+  }
+  if (petType === "bird") {
+    ctx.strokeStyle = toAlpha(palette.dark, 0.32);
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(target.x + target.width * 0.55, target.y + target.height * 0.45, target.width * 0.16, -0.2, 0.8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.moveTo(0, radius * 0.72);
+  ctx.bezierCurveTo(-radius * 1.15, -radius * 0.12, -radius * 0.86, -radius * 0.92, 0, -radius * 0.42);
+  ctx.bezierCurveTo(radius * 0.86, -radius * 0.92, radius * 1.15, -radius * 0.12, 0, radius * 0.72);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDrop(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.moveTo(0, -radius);
+  ctx.bezierCurveTo(radius * 0.82, -radius * 0.16, radius * 0.72, radius * 0.78, 0, radius);
+  ctx.bezierCurveTo(-radius * 0.72, radius * 0.78, -radius * 0.82, -radius * 0.16, 0, -radius);
+  ctx.fill();
+  ctx.restore();
+}
+
+function containRect(sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number): Rect {
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height
+  };
+}
+
+function fullImageCrop(image: HTMLImageElement): Rect {
+  const padX = image.width * 0.04;
+  const padY = image.height * 0.04;
+  return {
+    x: padX,
+    y: padY,
+    width: Math.max(1, image.width - padX * 2),
+    height: Math.max(1, image.height - padY * 2)
+  };
+}
+
+function createFullMask(width: number, height: number) {
+  const mask = document.createElement("canvas");
+  mask.width = width;
+  mask.height = height;
+  const ctx = mask.getContext("2d");
+  if (!ctx) return mask;
+  const gradient = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.56);
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.74, "rgba(255,255,255,0.98)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  return mask;
+}
+
+function featherMask(ctx: CanvasRenderingContext2D, mask: HTMLCanvasElement, blur: number) {
+  const copy = document.createElement("canvas");
+  copy.width = mask.width;
+  copy.height = mask.height;
+  const copyCtx = copy.getContext("2d");
+  if (!copyCtx) return;
+  copyCtx.filter = `blur(${blur}px)`;
+  copyCtx.drawImage(mask, 0, 0);
+  ctx.clearRect(0, 0, mask.width, mask.height);
+  ctx.drawImage(copy, 0, 0);
+}
+
+function sampleAverage(image: ImageData, x: number, y: number, width: number, height: number, stride: number): [number, number, number] {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (let yy = y; yy < y + height; yy++) {
+    for (let xx = x; xx < x + width; xx++) {
+      const i = (yy * stride + xx) * 4;
+      if (image.data[i + 3] < 10) continue;
+      r += image.data[i];
+      g += image.data[i + 1];
+      b += image.data[i + 2];
+      count++;
+    }
+  }
+  return [Math.round(r / Math.max(1, count)), Math.round(g / Math.max(1, count)), Math.round(b / Math.max(1, count))];
+}
+
+function averageRgb(colors: Array<[number, number, number]>): [number, number, number] {
+  return [
+    Math.round(colors.reduce((sum, color) => sum + color[0], 0) / colors.length),
+    Math.round(colors.reduce((sum, color) => sum + color[1], 0) / colors.length),
+    Math.round(colors.reduce((sum, color) => sum + color[2], 0) / colors.length)
+  ];
+}
+
+function colorDistance(a: [number, number, number], b: [number, number, number]) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+function parseColor(color: string): [number, number, number] {
+  if (color.startsWith("#") && color.length === 7) {
+    return [Number.parseInt(color.slice(1, 3), 16), Number.parseInt(color.slice(3, 5), 16), Number.parseInt(color.slice(5, 7), 16)];
+  }
+  const match = color.match(/\d+/g);
+  if (!match) return [217, 167, 108];
+  return [Number(match[0]), Number(match[1]), Number(match[2])];
+}
+
+function quantize(value: number, step: number) {
+  return Math.max(0, Math.min(255, Math.round(value / step) * step));
+}
+
+function softenSubject(ctx: CanvasRenderingContext2D, alpha: number) {
+  const copy = document.createElement("canvas");
+  copy.width = size;
+  copy.height = size;
+  const copyCtx = copy.getContext("2d");
+  if (!copyCtx) return;
+  copyCtx.filter = "blur(1.2px)";
+  copyCtx.drawImage(ctx.canvas, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(copy, 0, 0);
+  ctx.restore();
 }
 
 function samplePalette(image: HTMLImageElement): Palette {

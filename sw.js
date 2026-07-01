@@ -1,5 +1,5 @@
 const BASE_PATH = "/deskpaw";
-const CACHE_NAME = "deskpaw-v8";
+const CACHE_NAME = "deskpaw-v9";
 const OFFLINE_URL = `${BASE_PATH}/offline.html`;
 const CORE_ASSETS = [
   `${BASE_PATH}/`,
