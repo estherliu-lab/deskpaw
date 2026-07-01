@@ -24,6 +24,11 @@ const routeMap: Record<string, Route> = {
 
 const focusOptions = [25, 45, 60, 90];
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 function routeFromHash(): Route {
   return routeMap[window.location.hash.replace("#/", "")] ?? "home";
 }
@@ -224,7 +229,7 @@ function UploadPage({
   onGenerated: (profile: GeneratedPet) => void;
 }) {
   const t = copy[language];
-  const [image, setImage] = useState(`${import.meta.env.BASE_URL}demo/sample-pet.png`);
+  const [image, setImage] = useState("");
   const [name, setName] = useState(language === "zh" ? "小爪" : "Mochi");
   const [petType, setPetType] = useState<PetType>("cat");
   const [styleId, setStyleId] = useState<PetStyle>("creamy-healing");
@@ -236,14 +241,19 @@ function UploadPage({
   const handleFile = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setImage(String(reader.result));
+    reader.onload = () => {
+      const uploadAction: PetAction = "happy-jumping";
+      setImage(String(reader.result));
+      setActions((current) => [uploadAction, ...current.filter((item) => item !== uploadAction)].slice(0, 5));
+    };
     reader.readAsDataURL(file);
   };
 
   const toggleAction = (action: PetAction) => {
-    setActions((current) =>
-      current.includes(action) ? current.filter((item) => item !== action) : [...current, action].slice(0, 5)
-    );
+    setActions((current) => {
+      if (current[0] === action && current.length > 1) return current.filter((item) => item !== action);
+      return [action, ...current.filter((item) => item !== action)].slice(0, 5);
+    });
   };
 
   const toggleTag = (tag: string) => {
@@ -330,7 +340,14 @@ function UploadPage({
           {petActions.map((action) => (
             <button
               type="button"
-              className={actions.includes(action.id) ? "select-card selected" : "select-card"}
+              data-action-id={action.id}
+              className={[
+                "select-card",
+                actions.includes(action.id) ? "selected" : "",
+                selectedAction === action.id ? "primary-selected" : ""
+              ]
+                .filter(Boolean)
+                .join(" ")}
               onClick={() => toggleAction(action.id)}
               key={action.id}
             >
@@ -406,6 +423,7 @@ function PetHomePage({ language, profile }: { language: Language; profile: Gener
   const [logs, setLogs] = useState(loadLogs);
   const [minutes, setMinutes] = useState(25);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [activeAction, setActiveAction] = useState<PetAction>(profile?.selectedActions[0] ?? "idle-standing");
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -418,8 +436,9 @@ function PetHomePage({ language, profile }: { language: Language; profile: Gener
   }
 
   const messages = language === "zh" ? zhMessages : enMessages;
-  const interact = (nextMessage: string) => {
+  const interact = (nextMessage: string, nextAction: PetAction) => {
     setMessage(nextMessage);
+    setActiveAction(nextAction);
     setLogs(appendLog(nextMessage));
   };
   const randomMessage = () => messages[Math.floor(Math.random() * messages.length)];
@@ -429,21 +448,46 @@ function PetHomePage({ language, profile }: { language: Language; profile: Gener
 
   return (
     <main className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-[0.95fr_1.05fr]">
-      <GeneratedPetVisual profile={{ ...profile, messageToOwner: message }} language={language} />
+      <GeneratedPetVisual profile={{ ...profile, selectedActions: [activeAction], messageToOwner: message }} language={language} />
       <section className="home-console">
         <SectionTitle title={t.sections.petHome} body={message || profile.messageToOwner} />
         <div className="interaction-grid">
-          <button onClick={() => interact(language === "zh" ? "摸摸收到，今天也一起加油。" : "Pat received. Let us keep going today.")}>
+          <button
+            onClick={() =>
+              interact(language === "zh" ? "摸摸收到，今天也一起加油。" : "Pat received. Let us keep going today.", "affection")
+            }
+          >
             {t.home.pet}
           </button>
-          <button onClick={() => interact(language === "zh" ? "我会安静陪你专注这一段。" : "I will stay quietly through this focus session.")}>
+          <button
+            onClick={() =>
+              interact(
+                language === "zh" ? "我会安静陪你专注这一段。" : "I will stay quietly through this focus session.",
+                "focus-mode"
+              )
+            }
+          >
             {t.home.focus}
           </button>
-          <button onClick={() => interact(language === "zh" ? "喝口水吧，桌角监督员上线。" : "Drink some water. Your desk buddy is watching gently.")}>
+          <button
+            onClick={() =>
+              interact(
+                language === "zh" ? "喝口水吧，桌角监督员上线。" : "Drink some water. Your desk buddy is watching gently.",
+                "water-reminder"
+              )
+            }
+          >
             {t.home.water}
           </button>
-          <button onClick={() => interact(randomMessage())}>{t.home.encourage}</button>
-          <button onClick={() => downloadShareCard(profile, language)}>{t.home.card}</button>
+          <button onClick={() => interact(randomMessage(), "happy-jumping")}>{t.home.encourage}</button>
+          <button
+            onClick={() => {
+              setActiveAction("celebration");
+              downloadShareCard(profile, language);
+            }}
+          >
+            {t.home.card}
+          </button>
         </div>
 
         <div className="timer-panel">
@@ -486,6 +530,7 @@ function InstallPage({ language }: { language: Language }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <SectionTitle title={t.sections.install} body={t.sections.installBody} />
+      <InstallActions language={language} />
       <div className="doc-grid">
         {items.map(([title, body]) => (
           <article className="doc-card" key={title}>
@@ -498,6 +543,68 @@ function InstallPage({ language }: { language: Language }) {
         {language === "zh" ? "创建我的 DeskPaw" : "Create My DeskPaw"}
       </button>
     </main>
+  );
+}
+
+function InstallActions({ language }: { language: Language }) {
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setStatus("");
+    };
+    const onInstalled = () => {
+      setInstallPrompt(null);
+      setStatus(language === "zh" ? "已安装到桌面。" : "Installed on your home screen.");
+    };
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [language]);
+
+  const install = async () => {
+    if (!installPrompt) {
+      setStatus(
+        language === "zh"
+          ? "当前浏览器没有开放一键安装按钮。手机上请用 Safari/Chrome 的分享或菜单，选择“添加到主屏幕”。"
+          : "This browser is not exposing the install prompt. On mobile, use Safari/Chrome Share or Menu, then Add to Home Screen."
+      );
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setStatus(
+      choice.outcome === "accepted"
+        ? language === "zh"
+          ? "已开始安装。"
+          : "Installation started."
+        : language === "zh"
+          ? "已取消安装，可以稍后再试。"
+          : "Install dismissed. You can try again later."
+    );
+  };
+
+  return (
+    <section className="install-cta">
+      <button className="primary-button" onClick={install}>
+        {language === "zh" ? "添加到手机桌面" : "Add to Home Screen"}
+      </button>
+      <p>
+        {status ||
+          (language === "zh"
+            ? "支持的浏览器会弹出安装确认；iPhone 上通常需要用分享菜单添加。"
+            : "Supported browsers will show an install prompt. On iPhone, use the Share menu.")}
+      </p>
+    </section>
   );
 }
 

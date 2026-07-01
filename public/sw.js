@@ -1,5 +1,5 @@
 const BASE_PATH = "/deskpaw";
-const CACHE_NAME = "deskpaw-v3";
+const CACHE_NAME = "deskpaw-v4";
 const OFFLINE_URL = `${BASE_PATH}/offline.html`;
 const CORE_ASSETS = [
   `${BASE_PATH}/`,
@@ -31,6 +31,19 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+
+  if (new URL(event.request.url).pathname.startsWith(`${BASE_PATH}/app-assets/`)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

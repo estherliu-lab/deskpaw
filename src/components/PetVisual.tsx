@@ -17,14 +17,26 @@ export function PetVisual({ image, name, styleId, actionId, language, message, c
   const action = petActions.find((item) => item.id === actionId) ?? petActions[0];
   const title = name || (language === "zh" ? "示例爪爪" : "Sample Paw");
   const bubble = message || (language === "zh" ? "今天别太累，我陪你。" : "I will stay with you today.");
-  const fallbackImage = `${import.meta.env.BASE_URL}demo/sample-pet.png`;
-
   return (
     <div className={`pet-stage ${style.className} ${compact ? "pet-stage-compact" : ""}`}>
       <div className="pet-bubble">{bubble}</div>
-      <div className={`pet-orbit ${action.animationClass}`}>
-        <div className="pet-image-wrap">
-          <img src={image || fallbackImage} alt={title} className="pet-image" />
+      <div className={`pet-orbit ${action.animationClass}`} key={action.id}>
+        <div className={`pet-image-wrap ${image ? "pet-image-photo" : "pet-image-demo"}`}>
+          {image ? (
+            <img src={image} alt={title} className="pet-image" />
+          ) : (
+            <div className="demo-companion" aria-label={title}>
+              <span className="demo-ear demo-ear-left" />
+              <span className="demo-ear demo-ear-right" />
+              <span className="demo-face">
+                <i />
+                <i />
+                <b />
+              </span>
+              <span className="demo-paw demo-paw-left" />
+              <span className="demo-paw demo-paw-right" />
+            </div>
+          )}
         </div>
         <span className="pet-action-mark">{action.emoji}</span>
       </div>
