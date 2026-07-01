@@ -8,9 +8,10 @@ import { copy } from "./i18n/copy";
 import { generatePetCharacter } from "./lib/generator";
 import { downloadShareCard } from "./lib/shareCard";
 import { appendLog, loadLogs, loadProfile, saveProfile } from "./lib/storage";
+import { renderLocalStyledPet } from "./lib/stylizePetImage";
 import type { GeneratedPet, Language, PetAction, PetProfile, PetStyle, PetType } from "./types/pet";
 
-type Route = "home" | "upload" | "result" | "pet-home" | "install" | "about";
+type Route = "home" | "upload" | "result" | "pet-home" | "install" | "about" | "floating-pet";
 
 const routeMap: Record<string, Route> = {
   "": "home",
@@ -18,6 +19,7 @@ const routeMap: Record<string, Route> = {
   upload: "upload",
   result: "result",
   "pet-home": "pet-home",
+  "floating-pet": "floating-pet",
   install: "install",
   about: "about"
 };
@@ -52,6 +54,10 @@ export default function App() {
     saveProfile(nextProfile);
     setProfile(nextProfile);
   };
+
+  if (route === "floating-pet") {
+    return <FloatingPetPage language={language} profile={profile} />;
+  }
 
   return (
     <div className="min-h-screen bg-cream text-ink">
@@ -230,6 +236,8 @@ function UploadPage({
 }) {
   const t = copy[language];
   const [image, setImage] = useState("");
+  const [previewImage, setPreviewImage] = useState("");
+  const [isStylingPreview, setIsStylingPreview] = useState(false);
   const [name, setName] = useState(language === "zh" ? "小爪" : "Mochi");
   const [petType, setPetType] = useState<PetType>("cat");
   const [styleId, setStyleId] = useState<PetStyle>("creamy-healing");
@@ -237,6 +245,28 @@ function UploadPage({
   const [tags, setTags] = useState<string[]>([t.upload.personalities[0]]);
 
   const selectedAction = actions[0] ?? "idle-standing";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!image) {
+      setPreviewImage("");
+      setIsStylingPreview(false);
+      return;
+    }
+
+    setIsStylingPreview(true);
+    renderLocalStyledPet(image, styleId, petType, selectedAction)
+      .then((nextImage) => {
+        if (!cancelled) setPreviewImage(nextImage);
+      })
+      .finally(() => {
+        if (!cancelled) setIsStylingPreview(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [image, styleId, petType, selectedAction]);
 
   const handleFile = (file?: File) => {
     if (!file) return;
@@ -283,7 +313,14 @@ function UploadPage({
     <main className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-[0.92fr_1.08fr]">
       <aside className="preview-column">
         <SectionTitle title={t.sections.upload} body={t.upload.helper} />
-        <PetVisual image={image} name={name} styleId={styleId} actionId={selectedAction} language={language} />
+        <PetVisual
+          image={previewImage || image}
+          name={name}
+          styleId={styleId}
+          actionId={selectedAction}
+          language={language}
+          message={isStylingPreview ? (language === "zh" ? "正在把照片变成这个风格..." : "Rendering this style...") : undefined}
+        />
       </aside>
 
       <form className="editor-surface" onSubmit={submit}>
@@ -403,6 +440,7 @@ function ResultPage({ language, profile }: { language: Language; profile: Genera
           <button className="primary-button" onClick={() => downloadShareCard(profile, language)}>
             {t.result.save}
           </button>
+          <DesktopPetButton profile={profile} language={language} />
           <button className="secondary-button" onClick={copyCaption}>
             {copied ? t.result.copied : t.result.copy}
           </button>
@@ -491,6 +529,13 @@ function PetHomePage({ language, profile }: { language: Language; profile: Gener
           </button>
         </div>
 
+        <div className="button-grid">
+          <DesktopPetButton profile={{ ...profile, selectedActions: [activeAction], messageToOwner: message }} language={language} />
+          <button className="secondary-button" onClick={() => go("upload")}>
+            {t.result.edit}
+          </button>
+        </div>
+
         <div className="timer-panel">
           <strong>{timeLabel}</strong>
           <div className="timer-options">
@@ -515,6 +560,91 @@ function PetHomePage({ language, profile }: { language: Language; profile: Gener
           {logs.length === 0 ? <p>{message}</p> : logs.map((log) => <p key={log.createdAt}>{log.message}</p>)}
         </div>
       </section>
+    </main>
+  );
+}
+
+function DesktopPetButton({ profile, language }: { profile: GeneratedPet; language: Language }) {
+  const [status, setStatus] = useState("");
+
+  const openDesktopPet = async () => {
+    saveProfile(profile);
+    if (!window.deskpawDesktop?.openPetWindow) {
+      setStatus(
+        language === "zh"
+          ? "桌面宠物需要运行本地桌面版：npm run desktop:dev"
+          : "Desktop pet requires the local desktop app: npm run desktop:dev"
+      );
+      return;
+    }
+
+    const result = await window.deskpawDesktop.openPetWindow();
+    setStatus(
+      result.ok
+        ? language === "zh"
+          ? "桌面宠物已打开。"
+          : "Desktop pet opened."
+        : result.error ?? (language === "zh" ? "桌面宠物打开失败。" : "Could not open desktop pet.")
+    );
+  };
+
+  return (
+    <div className="desktop-pet-action">
+      <button className="primary-button" type="button" onClick={openDesktopPet}>
+        {language === "zh" ? "打开桌面宠物" : "Open Desktop Pet"}
+      </button>
+      {status && <small>{status}</small>}
+    </div>
+  );
+}
+
+function FloatingPetPage({ language, profile }: { language: Language; profile: GeneratedPet | null }) {
+  const [activeAction, setActiveAction] = useState<PetAction>(profile?.selectedActions[0] ?? "idle-standing");
+  const actionCycle: PetAction[] = ["idle-standing", "blinking", "affection", "happy-jumping", "head-tilt", "focus-mode"];
+
+  useEffect(() => {
+    document.body.classList.add("floating-pet-body");
+    return () => document.body.classList.remove("floating-pet-body");
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveAction((current) => actionCycle[(actionCycle.indexOf(current) + 1) % actionCycle.length]);
+    }, 3600);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const nextAction = () => {
+    setActiveAction((current) => actionCycle[(actionCycle.indexOf(current) + 1) % actionCycle.length]);
+  };
+
+  if (!profile) {
+    return (
+      <main className="floating-pet-shell">
+        <button className="floating-pet-hitbox" type="button" onClick={nextAction} aria-label={language === "zh" ? "切换动作" : "Change action"}>
+          <PetVisual name="DeskPaw" styleId="wool-felt" actionId={activeAction} language={language} compact />
+        </button>
+        <div className="floating-pet-caption">
+          <strong>DeskPaw</strong>
+          <span>{language === "zh" ? "先生成宠物后会替换成你的小狗" : "Create a pet to replace this demo"}</span>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="floating-pet-shell">
+      <button className="floating-pet-hitbox" type="button" onClick={nextAction} aria-label={language === "zh" ? "切换动作" : "Change action"}>
+        <GeneratedPetVisual
+          profile={{ ...profile, selectedActions: [activeAction], messageToOwner: profile.messageToOwner }}
+          language={language}
+          compact
+        />
+      </button>
+      <div className="floating-pet-caption">
+        <strong>{profile.name}</strong>
+        <span>{language === "zh" ? "拖动我到桌面角落" : "Drag me to a desk corner"}</span>
+      </div>
     </main>
   );
 }

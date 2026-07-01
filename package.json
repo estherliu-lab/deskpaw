@@ -4,24 +4,30 @@
   "version": "0.1.0",
   "description": "DeskPaw turns a pet photo into an installable mobile companion and future desktop pet.",
   "homepage": "https://estherliu-lab.github.io/deskpaw/",
+  "main": "desktop/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "desktop:dev": "concurrently -k \"npm run dev -- --port 5173\" \"wait-on http://127.0.0.1:5173/deskpaw/ && electron .\"",
+    "desktop:start": "npm run build && concurrently -k \"npm run preview -- --port 5173\" \"wait-on http://127.0.0.1:5173/deskpaw/ && electron .\""
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.3",
+    "electron": "^43.0.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5"
+    "wait-on": "^9.0.10"
   }
 }
