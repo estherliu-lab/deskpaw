@@ -434,6 +434,90 @@ h1 {
   mix-blend-mode: multiply;
 }
 
+.pet-character-photo {
+  width: min(88%, 25rem);
+}
+
+.pet-character-photo .pet-image-wrap {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pet-character-photo .pet-image-wrap::before,
+.pet-character-photo .pet-image-wrap::after {
+  display: none;
+}
+
+.pet-photo-puppet {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  transform-origin: 50% 74%;
+  filter: drop-shadow(0 26px 24px rgba(40, 48, 52, 0.2));
+}
+
+.pet-photo-puppet::before {
+  position: absolute;
+  inset: 68% 12% 8%;
+  z-index: 0;
+  border-radius: 999px;
+  background: rgba(40, 48, 52, 0.14);
+  filter: blur(2px);
+  content: "";
+}
+
+.pet-photo-part {
+  z-index: 1;
+  transform-origin: 50% 68%;
+  will-change: transform, opacity, filter, clip-path;
+}
+
+.pet-photo-body {
+  clip-path: ellipse(39% 31% at 50% 62%);
+}
+
+.pet-photo-chest {
+  z-index: 2;
+  clip-path: ellipse(24% 18% at 51% 58%);
+  opacity: 0.9;
+  transform-origin: 50% 62%;
+}
+
+.pet-photo-head {
+  z-index: 4;
+  clip-path: ellipse(29% 24% at 53% 38%);
+  transform-origin: 53% 46%;
+}
+
+.pet-photo-tail {
+  z-index: 1;
+  clip-path: polygon(72% 53%, 95% 39%, 97% 57%, 76% 70%);
+  opacity: 0.8;
+  transform-origin: 72% 61%;
+}
+
+.pet-photo-paw {
+  z-index: 5;
+  opacity: 0.95;
+  transform-origin: 50% 80%;
+}
+
+.pet-photo-paw-left {
+  clip-path: ellipse(14% 10% at 37% 78%);
+}
+
+.pet-photo-paw-right {
+  clip-path: ellipse(14% 10% at 64% 78%);
+}
+
+.pet-photo-effect {
+  z-index: 6;
+  clip-path: ellipse(45% 43% at 50% 55%);
+}
+
 .demo-companion {
   position: relative;
   width: 64%;
@@ -930,6 +1014,71 @@ h1 {
   background: linear-gradient(135deg, #7580a8, #d7b3df 66%);
 }
 
+.pet-character-photo .pet-image-wrap {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.pet-character-photo .pet-image-wrap::before,
+.pet-character-photo .pet-image-wrap::after {
+  display: none;
+}
+
+.pet-character-photo .pet-image-base {
+  border-radius: 0;
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-head {
+  clip-path: polygon(25% 16%, 78% 16%, 78% 58%, 25% 58%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-body {
+  clip-path: polygon(18% 42%, 82% 42%, 82% 84%, 18% 84%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-chest {
+  clip-path: polygon(32% 47%, 68% 47%, 68% 72%, 32% 72%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-tail {
+  clip-path: polygon(72% 50%, 96% 38%, 96% 62%, 72% 72%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-paw-left {
+  clip-path: polygon(24% 72%, 48% 72%, 48% 88%, 24% 88%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-paw-right {
+  clip-path: polygon(53% 72%, 77% 72%, 77% 88%, 53% 88%);
+}
+
+.pet-character-photo.pet-style-pixel-game .pet-photo-part {
+  image-rendering: pixelated;
+}
+
+.pet-character-photo.pet-style-cartoon-sticker .pet-photo-part,
+.pet-character-photo.pet-style-minimal-line .pet-photo-part {
+  filter:
+    drop-shadow(3px 0 0 rgba(40, 48, 52, 0.85))
+    drop-shadow(-3px 0 0 rgba(40, 48, 52, 0.85))
+    drop-shadow(0 3px 0 rgba(40, 48, 52, 0.85))
+    drop-shadow(0 -3px 0 rgba(40, 48, 52, 0.85));
+}
+
+.pet-character-photo.pet-style-wool-felt .pet-photo-body,
+.pet-character-photo.pet-style-watercolor .pet-photo-body {
+  clip-path: ellipse(42% 36% at 50% 56%);
+}
+
+.pet-character-photo.pet-style-wool-felt .pet-photo-head,
+.pet-character-photo.pet-style-watercolor .pet-photo-head {
+  clip-path: ellipse(31% 25% at 53% 38%);
+}
 
 .pet-action-mark {
   position: absolute;
@@ -1300,6 +1449,92 @@ select {
   animation: celebrate 1.2s ease-in-out infinite;
 }
 
+.pet-character-photo.anim-idle,
+.pet-character-photo.anim-sit,
+.pet-character-photo.anim-rest,
+.pet-character-photo.anim-sleep,
+.pet-character-photo.anim-jump,
+.pet-character-photo.anim-wag,
+.pet-character-photo.anim-wave,
+.pet-character-photo.anim-blink,
+.pet-character-photo.anim-tilt,
+.pet-character-photo.anim-grumpy,
+.pet-character-photo.anim-pout,
+.pet-character-photo.anim-stretch,
+.pet-character-photo.anim-water,
+.pet-character-photo.anim-focus,
+.pet-character-photo.anim-celebrate {
+  animation: none;
+}
+
+.pet-character-photo.anim-idle .pet-photo-body,
+.pet-character-photo.anim-focus .pet-photo-body {
+  animation: puppet-breathe 3.6s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-idle .pet-photo-head,
+.pet-character-photo.anim-focus .pet-photo-head {
+  animation: puppet-head-breathe 3.6s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-sit .pet-photo-body {
+  animation: puppet-sit 4s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-sit .pet-photo-head {
+  animation: puppet-head-nod 4s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-rest .pet-photo-puppet,
+.pet-character-photo.anim-sleep .pet-photo-puppet,
+.pet-character-photo.anim-pout .pet-photo-puppet {
+  animation: puppet-rest 4s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-sleep .pet-photo-head {
+  animation: puppet-sleep-head 3s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-jump .pet-photo-puppet,
+.pet-character-photo.anim-celebrate .pet-photo-puppet {
+  animation: puppet-hop 1.25s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-jump .pet-photo-paw,
+.pet-character-photo.anim-celebrate .pet-photo-paw {
+  animation: puppet-paw-kick 1.25s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-wag .pet-photo-tail,
+.pet-character-photo.anim-wave .pet-photo-tail {
+  animation: puppet-tail-wag 0.72s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-wave .pet-photo-paw-right,
+.pet-character-photo.anim-water .pet-photo-paw-right {
+  animation: puppet-wave-paw 1s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-blink .pet-photo-head {
+  animation: puppet-blink 2.4s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-tilt .pet-photo-head {
+  animation: puppet-head-tilt 1.8s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-grumpy .pet-photo-head {
+  animation: puppet-grumpy-head 0.86s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-stretch .pet-photo-body {
+  animation: puppet-stretch-body 2.4s ease-in-out infinite;
+}
+
+.pet-character-photo.anim-stretch .pet-photo-head {
+  animation: puppet-stretch-head 2.4s ease-in-out infinite;
+}
+
 @keyframes breathe {
   50% {
     transform: translateY(-12px) scale(1.025);
@@ -1384,6 +1619,120 @@ select {
 @keyframes celebrate {
   50% {
     transform: translateY(-34px) rotate(6deg);
+  }
+}
+
+@keyframes puppet-breathe {
+  50% {
+    transform: translateY(-4px) scaleY(1.025);
+  }
+}
+
+@keyframes puppet-head-breathe {
+  50% {
+    transform: translateY(-9px) rotate(-1deg);
+  }
+}
+
+@keyframes puppet-head-nod {
+  50% {
+    transform: translateY(7px) rotate(2deg);
+  }
+}
+
+@keyframes puppet-sit {
+  50% {
+    transform: translateY(12px) scaleY(0.94);
+  }
+}
+
+@keyframes puppet-rest {
+  50% {
+    transform: translateY(14px) rotate(-3deg) scaleX(1.04);
+  }
+}
+
+@keyframes puppet-sleep-head {
+  50% {
+    opacity: 0.72;
+    transform: translateY(10px) rotate(-4deg) scaleY(0.9);
+  }
+}
+
+@keyframes puppet-hop {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+
+  42% {
+    transform: translateY(-44px) scaleY(1.03);
+  }
+
+  64% {
+    transform: translateY(4px) scaleY(0.96);
+  }
+}
+
+@keyframes puppet-paw-kick {
+  42% {
+    transform: translateY(-16px) rotate(10deg);
+  }
+
+  64% {
+    transform: translateY(8px) rotate(-6deg);
+  }
+}
+
+@keyframes puppet-tail-wag {
+  50% {
+    transform: rotate(14deg) translateX(8px);
+  }
+}
+
+@keyframes puppet-wave-paw {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+
+  35% {
+    transform: rotate(-18deg) translateY(-12px);
+  }
+
+  70% {
+    transform: rotate(15deg) translateY(-8px);
+  }
+}
+
+@keyframes puppet-blink {
+  44%,
+  56% {
+    transform: scaleY(0.76) translateY(8px);
+  }
+}
+
+@keyframes puppet-head-tilt {
+  50% {
+    transform: rotate(11deg) translateY(-7px);
+  }
+}
+
+@keyframes puppet-grumpy-head {
+  50% {
+    transform: translateX(10px) rotate(-3deg);
+  }
+}
+
+@keyframes puppet-stretch-body {
+  50% {
+    transform: scaleX(1.13) scaleY(0.9) translateY(8px);
+  }
+}
+
+@keyframes puppet-stretch-head {
+  50% {
+    transform: translateX(18px) translateY(6px) rotate(4deg);
   }
 }
 

@@ -29,10 +29,15 @@ export function PetVisual({ image, name, styleId, actionId, language, message, c
         >
           <div className={`pet-image-wrap ${image ? "pet-image-photo" : "pet-image-demo"}`}>
             {image ? (
-              <>
-                <img src={image} alt={title} className="pet-image pet-image-base" />
-                <img src={image} alt="" className="pet-image pet-image-effect" aria-hidden="true" />
-              </>
+              <div className="pet-photo-puppet" aria-label={title}>
+                <img src={image} alt={title} className="pet-image pet-image-base pet-photo-part pet-photo-body" />
+                <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-tail" aria-hidden="true" />
+                <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-chest" aria-hidden="true" />
+                <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-head" aria-hidden="true" />
+                <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-paw pet-photo-paw-left" aria-hidden="true" />
+                <img src={image} alt="" className="pet-image pet-image-base pet-photo-part pet-photo-paw pet-photo-paw-right" aria-hidden="true" />
+                <img src={image} alt="" className="pet-image pet-image-effect pet-photo-part pet-photo-effect" aria-hidden="true" />
+              </div>
             ) : (
               <div className="demo-companion" aria-label={title}>
                 <span className="demo-ear demo-ear-left" />
