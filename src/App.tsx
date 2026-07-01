@@ -326,6 +326,7 @@ function UploadPage({
           {petStyles.map((style) => (
             <button
               type="button"
+              data-style-id={style.id}
               className={styleId === style.id ? "select-card selected" : "select-card"}
               onClick={() => setStyleId(style.id)}
               key={style.id}

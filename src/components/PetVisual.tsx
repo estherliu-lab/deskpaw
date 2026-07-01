@@ -20,25 +20,35 @@ export function PetVisual({ image, name, styleId, actionId, language, message, c
   return (
     <div className={`pet-stage ${style.className} ${compact ? "pet-stage-compact" : ""}`}>
       <div className="pet-bubble">{bubble}</div>
-      <div className={`pet-orbit ${action.animationClass}`} key={action.id}>
-        <div className={`pet-image-wrap ${image ? "pet-image-photo" : "pet-image-demo"}`}>
-          {image ? (
-            <img src={image} alt={title} className="pet-image" />
-          ) : (
-            <div className="demo-companion" aria-label={title}>
-              <span className="demo-ear demo-ear-left" />
-              <span className="demo-ear demo-ear-right" />
-              <span className="demo-face">
-                <i />
-                <i />
-                <b />
-              </span>
-              <span className="demo-paw demo-paw-left" />
-              <span className="demo-paw demo-paw-right" />
-            </div>
-          )}
+      <div className="pet-orbit">
+        <div
+          className={`pet-character pet-style-${style.id} ${action.animationClass} ${image ? "pet-character-photo" : "pet-character-demo"}`}
+          data-pet-style={style.id}
+          data-pet-action={action.id}
+          key={`${style.id}-${action.id}-${image ? "photo" : "demo"}`}
+        >
+          <div className={`pet-image-wrap ${image ? "pet-image-photo" : "pet-image-demo"}`}>
+            {image ? (
+              <>
+                <img src={image} alt={title} className="pet-image pet-image-base" />
+                <img src={image} alt="" className="pet-image pet-image-effect" aria-hidden="true" />
+              </>
+            ) : (
+              <div className="demo-companion" aria-label={title}>
+                <span className="demo-ear demo-ear-left" />
+                <span className="demo-ear demo-ear-right" />
+                <span className="demo-face">
+                  <i />
+                  <i />
+                  <b />
+                </span>
+                <span className="demo-paw demo-paw-left" />
+                <span className="demo-paw demo-paw-right" />
+              </div>
+            )}
+          </div>
+          <span className="pet-action-mark">{action.emoji}</span>
         </div>
-        <span className="pet-action-mark">{action.emoji}</span>
       </div>
       <div className="pet-stage-meta">
         <strong>{title}</strong>
